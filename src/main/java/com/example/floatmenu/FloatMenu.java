@@ -92,6 +92,7 @@ public class FloatMenu {
     private boolean openingTimer = false;//定时器是否正在开启
     private boolean isTimer = false;     //是否需要计时器
     private boolean isHiding = false;    //悬浮球是否在隐藏
+    private boolean mHalf;               //展开的子菜单是否为半圆
 
     private List<Bitmap> mChildMenuItemList = new ArrayList<>();          //记录子菜单item
     private List<CircleImageView> mChildMenuList = new ArrayList<>();           //记录子菜单View
@@ -152,6 +153,7 @@ public class FloatMenu {
                     //移动悬浮球
                     if (!isOpen) {
                         isMoving = true;
+                        //在屏幕按下的坐标 - 在悬浮球上按下的坐标 = 悬浮球的坐标（左上角）
                         moveFloatMenu(event.getRawX() - mInLogoX, event.getRawY() - mInLogoY);
                     }
                     //旋转悬浮球
@@ -179,7 +181,11 @@ public class FloatMenu {
                      * 打开或关闭菜单
                      */
                     if (!isOpen  && !isMoving && !openingTimer) {
-                        openFloatMenu(getFloatMenuLocation());
+                        if(mHalf) {
+                            openFloatMenu();
+                        }else {
+                            openRectangleMenu();
+                        }
                     } else if (isOpen) {
                         closeFloatMenu();
                     }
@@ -218,6 +224,7 @@ public class FloatMenu {
         mOnMenuClickListener = builder.mOnMenuClickListener;
         isRotate = builder.isRotate;
         isTimer = builder.isTimer;
+        mHalf = builder.mHalf;
         mRotate_time = builder.mRotate_time;
 
         initFloatMenu();
@@ -225,10 +232,10 @@ public class FloatMenu {
 
     /**
      * 打开子菜单
-     * @param location
      */
-    protected void openFloatMenu(final int location) {
+    protected void openFloatMenu() {
         isOpen = true;
+        final int location = getFloatMenuLocation();
         if(mLogo != mOpenLogo){
             mLogoView.drawOpenLogo();
         }
@@ -315,6 +322,64 @@ public class FloatMenu {
     }
 
     /**
+     * 打开矩形菜单
+     */
+    private void openRectangleMenu(){
+        isOpen = true;
+        int x;               //目标平移的x坐标
+        int y;               //目标平移的y坐标
+
+        if(mLogo != mOpenLogo){
+            mLogoView.drawOpenLogo();
+        }
+
+        //记录关闭子菜单移动的距离
+        if(mCloseChildMenuList.size() != 0){
+            mCloseChildMenuList.clear();
+        }
+        //添加矩形子菜单
+        addRectangleMenuLayout(getCurrentLocation());
+        //初始化动画类
+        mAnimatorSet = new AnimatorSet();
+        CircleImageView circleImageView = null;
+        for (int j = 0; j < mChildMenuList.size(); j++) {
+            circleImageView = mChildMenuList.get(j);
+            //x,y子菜单在当前位置到目标位置的距离
+            x = getCurrentLocation() == LEFT ? mOpenChildMenuR * j + 1 : -mOpenChildMenuR * j + 1;
+            y = 0;
+            mCloseChildMenuList.add(new CloseChildMenuBean(x,y));
+            mAnimatorSet.playTogether(ObjectAnimator.ofFloat(circleImageView,"translationX",
+                    circleImageView.getTranslationX(),circleImageView.getTranslationX() + x),
+                    ObjectAnimator.ofFloat(circleImageView,"translationY",
+                            circleImageView.getTranslationY(),circleImageView.getTranslationY() + y));
+        }
+
+        mAnimatorSet.setDuration(OPEN_MENU_TIME);
+        mAnimatorSet.addListener(new Animator.AnimatorListener() {
+            @Override
+            public void onAnimationStart(Animator animation) {
+                dismissFloatMenuListener();
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                setFloatMenuListener();
+            }
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+
+            }
+
+            @Override
+            public void onAnimationRepeat(Animator animation) {
+
+            }
+        });
+        mAnimatorSet.start();
+    }
+
+    /**
      * 关闭子菜单
      */
     private void closeFloatMenu() {
@@ -366,7 +431,7 @@ public class FloatMenu {
     }
 
     /**
-     * 添加子菜单
+     * 添加半圆子菜单
      */
     private void addChildMenuLayout(int location){
         switch (location) {
@@ -421,6 +486,31 @@ public class FloatMenu {
     }
 
     /**
+     * 添加矩形子菜单
+     * @param location
+     */
+    private void addRectangleMenuLayout(int location){
+        switch (location){
+            case LEFT:
+                mChildLayoutParams.x = mLogoX + R;
+                mChildMenuLayoutParams.gravity = Gravity.LEFT | Gravity.CENTER;
+                break;
+            case RIGHT:
+                mChildLayoutParams.x = mLogoX - 6 * R;
+                mChildMenuLayoutParams.gravity = Gravity.RIGHT | Gravity.CENTER;
+                break;
+        }
+        mChildLayoutParams.y = mLogoY + mOffset;
+        mChildLayoutParams.width = mOpenChildMenuR * mChildMenuList.size();
+        mChildLayoutParams.height = mChildR;
+
+        for(CircleImageView c : mChildMenuList){
+            mChildLayout.addView(c,mChildMenuLayoutParams);
+        }
+        mWindowManager.addView(mChildLayout,mChildLayoutParams);
+    }
+
+    /**
      * 移除子菜单
      */
     private void removeChildMenuLayout(){
@@ -445,8 +535,8 @@ public class FloatMenu {
      * 移动悬浮球
      */
     private void moveFloatMenu(float x, float y) {
-        if (y <= mStatusBarHeight + mLogoView.r) {
-            y = mStatusBarHeight + mLogoView.r;
+        if (y <= mStatusBarHeight) {
+            y = mStatusBarHeight;
         }
         mLogoX = (int) x;
         mLogoY = (int) y;
@@ -468,7 +558,7 @@ public class FloatMenu {
      */
     private void showLogo(){
         mAnimatorSet = new AnimatorSet();
-        if(getRecoverLogoLocation() == LEFT) {
+        if(getCurrentLocation() == LEFT) {
             mAnimatorSet.play(ObjectAnimator.ofFloat(mLogoView,"translationX",
                     mLogoView.getX(), mLogoView.getX() + mLogoView.r * 3/2));
         }else{
@@ -485,7 +575,7 @@ public class FloatMenu {
      */
     private void hideLogo(){
         mAnimatorSet = new AnimatorSet();
-        if(getRecoverLogoLocation() == LEFT) {
+        if(getCurrentLocation() == LEFT) {
             mAnimatorSet.play(ObjectAnimator.ofFloat(mLogoView,"translationX",
                     mLogoView.getX(), mLogoView.getX() - mLogoView.r * 3/2));
         }else{
@@ -508,7 +598,7 @@ public class FloatMenu {
      * 恢复悬浮球位置
      */
     private void recoverFloatMenu() {
-        final int location = getRecoverLogoLocation();
+        final int location = getCurrentLocation();
         if(location == LEFT){
             mTranslationAnimator = ValueAnimator.ofInt(mLogoX,0);
         }else {
@@ -576,7 +666,7 @@ public class FloatMenu {
      *
      * @return
      */
-    private int getRecoverLogoLocation() {
+    private int getCurrentLocation() {
         if (mLogoX < mScreenWidth / 2) {
             return LEFT;
         } else {
@@ -758,11 +848,16 @@ public class FloatMenu {
             mChildMenuList.add(circleImageView);
         }
         mChildR = circleImageView.r * 2;
-        mOpenChildMenuR = dp2px(circleImageView.r,mContext);
+        mOpenChildMenuR = mHalf?dp2px(circleImageView.r,mContext) : dp2px((int)(mLogoView.r * 2/3.0),mContext);
         mOffset = mLogoView.r - circleImageView.r;
         mChildMenuLayoutParams = new FrameLayout.LayoutParams(circleImageView.r,circleImageView.r);
     }
 
+    /**
+     * 设置子菜单监听
+     * @param view
+     * @param i
+     */
     private void setChildMenuClick(View view, final int i){
         if(mOnMenuClickListener != null){
             view.setOnClickListener(new View.OnClickListener() {
@@ -775,6 +870,9 @@ public class FloatMenu {
         }
     }
 
+    /**
+     * 初始化定时器
+     */
     private void initTimer(){
         mTimer = new CountDownTimer(5000,1000) {
             @Override
@@ -820,6 +918,7 @@ public class FloatMenu {
         private Context mContext;
         private boolean isRotate = false;
         private boolean isTimer = false;
+        private boolean mHalf = true;
         private int mRotate_time = 200;
         private List<Bitmap> mFloatMenuItems = new ArrayList<>();
         private FloatMenu.OnMenuClickListener mOnMenuClickListener;
@@ -859,6 +958,11 @@ public class FloatMenu {
 
         public Builder setTimer(boolean b){
             isTimer = b;
+            return this;
+        }
+
+        public Builder setHalf(boolean b){
+            mHalf = b;
             return this;
         }
 
